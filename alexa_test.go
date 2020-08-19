@@ -177,6 +177,38 @@ func TestAlexaTimestampValidation(t *testing.T) {
 
 }
 
+func TestAlexaOnCanFulfillIntentCalled(t *testing.T) {
+	request := createRecipeRequest()
+	request.Request.Type = canFulfillIntentName
+
+	handlerWithoutOnCanFulfillIntent := &emptyRequestHandler{}
+	alexa := getAlexaWithHandler(handlerWithoutOnCanFulfillIntent)
+	ctx := context.Background()
+	responseEnv, err := alexa.ProcessRequest(ctx, request)
+	if err != nil {
+		t.Error("Error processing request. " + err.Error())
+	}
+	switch {
+	case responseEnv.Response == nil:
+		t.Error("responseEnv.Response not set on handler without OnCanFulfillIntent")
+	case responseEnv.Response.CanFulfillIntent == nil:
+		t.Error("responseEnv.Response.CanFulfillIntent not set on handler without OnCanFulfillIntent")
+	case responseEnv.Response.CanFulfillIntent.CanFulfill != CanFulfillNo:
+		t.Errorf("expected responseEnv.Response.CanFulfillIntent.CanFulfill == CanFulfillNo, but was %s", responseEnv.Response.CanFulfillIntent.CanFulfill)
+	}
+
+	handler := &emptyRequestHandlerCanFulfillIntent{}
+	alexa = getAlexaWithHandler(handler)
+	handler.OnCanFulfillIntentThrowsErr = true
+	_, err = alexa.ProcessRequest(ctx, request)
+	if !handler.OnCanFulfillIntentCalled {
+		t.Error("OnCanFulfillIntent was not called.")
+	}
+	if err == nil {
+		t.Error("OnCanFulfillIntent should have returned an error.")
+	}
+}
+
 func TestAlexaOnSessionStartedCalled(t *testing.T) {
 	request := createRecipeRequest()
 
@@ -497,6 +529,20 @@ func createRecipeRequest() *RequestEnvelope {
 	json.Unmarshal(jsonBlob, &request)
 	request.Request.Timestamp = time.Now().Format(time.RFC3339)
 	return &request
+}
+
+type emptyRequestHandlerCanFulfillIntent struct {
+	emptyRequestHandler
+	OnCanFulfillIntentCalled    bool
+	OnCanFulfillIntentThrowsErr bool
+}
+
+func (h *emptyRequestHandlerCanFulfillIntent) OnCanFulfillIntent(context.Context, *Request, *Session, *Context, *Response) error {
+	h.OnCanFulfillIntentCalled = true
+	if h.OnCanFulfillIntentThrowsErr {
+		return errors.New("error in OnCanFulfillIntent")
+	}
+	return nil
 }
 
 type emptyRequestHandler struct {

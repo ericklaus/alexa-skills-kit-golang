@@ -11,6 +11,7 @@ import (
 )
 
 const sdkVersion = "1.0"
+const canFulfillIntentName = "CanFulfillIntentRequest"
 const launchRequestName = "LaunchRequest"
 const intentRequestName = "IntentRequest"
 const sessionEndedRequestName = "SessionEndedRequest"
@@ -36,6 +37,10 @@ type RequestHandler interface {
 	OnLaunch(context.Context, *Request, *Session, *Context, *Response) error
 	OnIntent(context.Context, *Request, *Session, *Context, *Response) error
 	OnSessionEnded(context.Context, *Request, *Session, *Context, *Response) error
+}
+
+type OnCanFulfillIntentHandler interface {
+	OnCanFulfillIntent(context.Context, *Request, *Session, *Context, *Response) error
 }
 
 // RequestEnvelope contains the data passed from Alexa to the request handler.
@@ -157,11 +162,12 @@ type ResponseEnvelope struct {
 
 // Response contains the body of the response.
 type Response struct {
-	OutputSpeech     *OutputSpeech `json:"outputSpeech,omitempty"`
-	Card             *Card         `json:"card,omitempty"`
-	Reprompt         *Reprompt     `json:"reprompt,omitempty"`
-	Directives       []interface{} `json:"directives,omitempty"`
-	ShouldSessionEnd bool          `json:"shouldEndSession"`
+	OutputSpeech     *OutputSpeech     `json:"outputSpeech,omitempty"`
+	Card             *Card             `json:"card,omitempty"`
+	Reprompt         *Reprompt         `json:"reprompt,omitempty"`
+	Directives       []interface{}     `json:"directives,omitempty"`
+	CanFulfillIntent *CanFulfillIntent `json:"canFulfillIntent,omitempty"`
+	ShouldSessionEnd bool              `json:"shouldEndSession"`
 }
 
 // OutputSpeech contains the data the defines what Alexa should say to the user.
@@ -189,6 +195,25 @@ type Image struct {
 // Reprompt contains data about whether Alexa should prompt the user for more data.
 type Reprompt struct {
 	OutputSpeech *OutputSpeech `json:"outputSpeech,omitempty"`
+}
+
+// CanFulfillIntent contains data about whether your skill can fulfill the specified intent.
+type CanFulfillIntent struct {
+	CanFulfill CanFulfill                 `json:"canFulfill"`
+	Slots      map[string]*CanFulfillSlot `json:"slots",omitempty`
+}
+
+type CanFulfill string
+
+var (
+	CanFulfillYes   CanFulfill = "YES"
+	CanFulfillNo    CanFulfill = "NO"
+	CanFulfillMaybe CanFulfill = "MAYBE"
+)
+
+type CanFulfillSlot struct {
+	CanUnderstand CanFulfill `json:"canUnderstand"`
+	CanFulFill    CanFulfill `json:"canFulfill"`
 }
 
 // AudioPlayerDirective contains device level instructions on how to handle the response.
@@ -263,6 +288,20 @@ func (alexa *Alexa) ProcessRequest(ctx context.Context, requestEnv *RequestEnvel
 	}
 
 	switch requestEnv.Request.Type {
+	case canFulfillIntentName:
+		h, ok := alexa.RequestHandler.(OnCanFulfillIntentHandler)
+		if !ok {
+			log.Println("Handler does not implement OnCanFulfillIntentHandler.")
+			response.CanFulfillIntent = &CanFulfillIntent{
+				CanFulfill: CanFulfillNo,
+			}
+		} else {
+			err := h.OnCanFulfillIntent(ctx, request, session, context, response)
+			if err != nil {
+				log.Println("Error handling OnCanFulfillIntent", err.Error())
+				return nil, err
+			}
+		}
 	case launchRequestName:
 		err := alexa.RequestHandler.OnLaunch(ctx, request, session, context, response)
 		if err != nil {
